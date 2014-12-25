@@ -1,10 +1,10 @@
 ﻿// Learn more about F# at http://fsharp.net. See the 'F# Tutorial' project
 // for more guidance on F# programming.
 
-#load "Library1.fs"
+//#load "Library1.fs"
 //#r @"C:\Users\Crystal\Documents\GitHub\cryptopals\matasano\packages\FSharpx.Collections.1.9.4\lib\net35\FSharpx.Collections.dll"
 
-open matasano
+//open matasano
 //open FSharpx.Collections
 
 // Define your library scripting code here
@@ -39,6 +39,14 @@ let rec hexToBytes (cs:char list) : (byte list) =
     match cs with
     | [] -> []
     | x::y::ys -> [(((hexToByte x) <<< 4) ||| hexToByte y)] @ (hexToBytes ys)
+    | [x] -> [(hexToByte x)]
+
+let hexDecode (s:string) : (byte list) =
+    s.ToCharArray() |> Array.toList |> hexToBytes
+
+let byteToHex (b:byte) : (string) = b.ToString("X2")
+let hexEncode (bs:byte list) : (string) =
+    bs |> List.map byteToHex |> System.String.Concat
 
 let byteToBase64 (b:byte) : (char) =
     match b with
@@ -61,12 +69,19 @@ let bytesToBase64Bytes (a:byte) (b:byte) (c:byte) : (byte list) =
     let b3 = c &&& 0b00111111uy
     [b0;b1;b2;b3]
 
-let rec byteSeqToBase64 (bs:byte list) : (char list) =
+let rec byteListToBase64 (bs:byte list) : (char list) =
     match bs with
     | []-> []
-    | x::y::z::zs-> ((bytesToBase64Bytes x y z) |> List.map byteToBase64) @ (byteSeqToBase64 zs)
-    //| x::y::ys -> ((bytesToBase64Bytes x y 0uy) |> List.map byteToBase64 |> Seq.take 3) @ ['=']
-    //| x::xs -> ((bytesToBase64Bytes x 0uy 0uy) |> List.map byteToBase64 |> Seq.take 2) @ ['=';'=']
+    | x::y::z::zs-> ((bytesToBase64Bytes x y z) |> List.map byteToBase64) @ (byteListToBase64 zs)
+    | x::y::ys -> ((bytesToBase64Bytes x y 0uy) |> List.map byteToBase64 |> Seq.take 3 |> Seq.toList) @ ['=']
+    | x::xs -> ((bytesToBase64Bytes x 0uy 0uy) |> List.map byteToBase64 |> Seq.take 2 |> Seq.toList) @ ['=';'=']
 
+// S1C1
 let hexToBase64 (hex:string) : (string) =
-    hex.ToCharArray() |> Array.toList |> hexToBytes |> Seq.toList |> byteSeqToBase64 |> System.String.Concat
+    hex |> hexDecode |> byteListToBase64 |> System.String.Concat
+
+// S1C2
+let fixedXor (s0:string) (s1:string) =
+    let bs0 = s0.ToCharArray() |> Array.toList |> hexToBytes 
+    let bs1 = s1.ToCharArray() |> Array.toList |> hexToBytes
+    List.zip bs0 bs1 |> (List.map (fun (a,b) -> a ^^^ b)) |> hexEncode
