@@ -164,11 +164,38 @@ let theText = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3
 let scoreText (text:string) : (int) =
     text.ToLower().ToCharArray() |> Array.sumBy (fun c ->
         match c with
-        | 'a' -> 1
-        | 'e' -> 1
-        | 'i' -> 1
-        | 'o' -> 1
-        | 'u' -> 1
+        | 'a' -> 81
+        | 'b' -> 14
+        | 'c' -> 27
+        | 'd' -> 42
+        | 'e' -> 127
+        | 'f' -> 22
+        | 'g' -> 20
+        | 'h' -> 60
+        | 'i' -> 69
+        | 'j' -> 2
+        | 'k' -> 7
+        | 'l' -> 40
+        | 'm' -> 24
+        | 'n' -> 67
+        | 'o' -> 75
+        | 'p' -> 19
+        | 'q' -> 1
+        | 'r' -> 59
+        | 's' -> 63
+        | 't' -> 91
+        | 'u' -> 28
+        | 'v' -> 10
+        | 'w' -> 23
+        | 'x' -> 2
+        | 'y' -> 20
+        | 'z' -> 1
+        //| '\r' -> 0
+        //| '\n' -> 0
+        //| '~' -> -1000
+        //| '^' -> -1000
+        //| x when byte(x) > 126uy -> -100
+        //| x when byte(x) < 32uy -> -100
         | _ -> 0)
 
 let path = @"C:\Users\ryanj\Documents\GitHub\cryptopals\matasano\4.txt"
@@ -184,7 +211,6 @@ let decodedLines (contents: string [])  =
         Array.map (fun s -> (scoreText s, s, key))) |>
     Array.collect (fun x -> x) |>
     Array.sortBy (fun (score, s, key) -> -score) |>
-    Array.filter (fun (score, s, key) -> s.Contains ("jumping")) |>
     Array.iter (fun (s,text, key) ->
         let output = String.concat " : " [s.ToString();text;key.ToString()]
         System.Console.WriteLine output)
