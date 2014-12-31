@@ -98,14 +98,19 @@ let decodeHexEncodedSingleByteXorCipher (c:char) (s:string) =
     let chars = xored |> List.map (fun x -> (char)x)
     chars |> System.String.Concat
     
-let getDist (s:string) =
-    let total = s.Length
-    let letters = ['a' .. 'z']
-    let frequency = letters |> List.map (fun x -> (x,  s.ToLower().ToCharArray() |> Array.toList |> List.filter (fun z -> z.Equals(x)) |> List.length))
-    let dist = frequency |> List.map (fun (c,f) -> (c, (float)f / (float)total)) |> Map.ofList
-    dist
+let getLetterDistribution (s:string) =
+    let total = (float)s.Length
+    let charArray = s.ToLower().ToCharArray()
+    let keys = charArray |> Array.toSeq |> Seq.distinct |> Seq.toList
+    let frequency = keys |> List.map (fun k -> (k, charArray |> Array.filter (fun z -> z.Equals(k)) |> Array.length))
+    let letterDistribution = frequency |> List.map (fun (c, letterFrequency) -> (c, (/) ((float)letterFrequency) total)) |> Map.ofList
+    letterDistribution
 
-let score (s:string) =
+let squareDifference a b =
+    let difference = a - b
+    difference * difference
+
+let score (text:string) =
     let normals = [
         ('a',0.08167)
         ('b',0.01492)
@@ -133,23 +138,54 @@ let score (s:string) =
         ('x',0.00150)
         ('y',0.01974)
         ('z',0.00074)] |> Map.ofList
-    let dist = getDist s
+    let textLetterDistribution = getLetterDistribution text |> Map.toList
     let theScore =
-        dist |>
-        Map.toList |>
-        List.map (fun (k,v) ->
-            normals.TryFind k |>
-            (fun o -> if Option.isSome o then o else Some 0.0) |>
-            Option.get |>
-            (-) v |>
-            (fun x -> x * x)) |>
+        textLetterDistribution |>
+        List.map (fun (c,actual) ->
+            match c with
+                | c when System.Char.IsPunctuation c -> 1000.0
+                | c when System.Char.IsLetter c ->
+                    match normals.TryFind c with
+                    | Some expected -> squareDifference actual expected
+                    | None -> 100.0
+                | _ -> 100.0) |>
         List.sum
     theScore
 
 let getScores (text:string) =
     ['a' .. 'z'] @ ['A' .. 'Z'] |>
-    List.map (fun c -> decodeHexEncodedSingleByteXorCipher c text) |>
-    List.map (fun s -> (score s, s)) |>
-    List.sortBy (fun (s,r) -> s);;
+    List.map (fun c -> (c, decodeHexEncodedSingleByteXorCipher c text)) |>
+    List.map (fun (c,s) -> (score s, s, c)) |>
+    List.sortBy (fun (s,r,c) -> s);;
 
 let theText = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
+
+// S1C4
+let scoreText (text:string) : (int) =
+    text.ToLower().ToCharArray() |> Array.sumBy (fun c ->
+        match c with
+        | 'a' -> 1
+        | 'e' -> 1
+        | 'i' -> 1
+        | 'o' -> 1
+        | 'u' -> 1
+        | _ -> 0)
+
+let path = @"C:\Users\ryanj\Documents\GitHub\cryptopals\matasano\4.txt"
+let contents = System.IO.File.ReadAllLines(path)
+let isValidChars  (w:string) = w.ToCharArray() |> Array.forall (fun c -> c <= '~' )
+let decodedLines (contents: string [])  =
+    let keys = ['0' .. '9'] @ ['a' .. 'z'] @ ['A' .. 'Z'] |> List.toArray
+    let decode k text = decodeHexEncodedSingleByteXorCipher k text
+    let decodeContents key = contents |> Array.map (decode key)
+    keys |>
+    Array.map (fun key ->
+        decodeContents key |>
+        Array.map (fun s -> (scoreText s, s, key))) |>
+    Array.collect (fun x -> x) |>
+    Array.sortBy (fun (score, s, key) -> -score) |>
+    Array.filter (fun (score, s, key) -> s.Contains ("jumping")) |>
+    Array.iter (fun (s,text, key) ->
+        let output = String.concat " : " [s.ToString();text;key.ToString()]
+        System.Console.WriteLine output)
+// Key: '5', Text: 'Now that the party is jumping\r\n'

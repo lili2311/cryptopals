@@ -53,6 +53,8 @@
     <None Include="Script.fsx" />
     <Content Include="packages.config" />
     <Content Include="app.config" />
+    <Content Include="3.txt" />
+    <Content Include="4.txt" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharpx.Collections">
