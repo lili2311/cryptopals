@@ -1,8 +1,12 @@
 ﻿
-let pkcs7 (blockSize:byte) (bytes:byte []) : (byte []) =
-    let paddingCount = int(blockSize) - (bytes.Length % int(blockSize))
-    let paddingByte = byte(paddingCount)
-    (bytes |> Array.toList) @ (List.replicate paddingCount paddingByte) |> List.toArray
+let pkcs7 (blockSize:byte) (bytes:byte []) =
+    let extra = bytes.Length % int(blockSize)
+    if (extra = 0)
+    then bytes
+    else
+        let paddingCount = int(blockSize) - extra
+        let paddingByte = byte(paddingCount)
+        (bytes |> Array.toList) @ (List.replicate paddingCount paddingByte) |> List.toArray
 
 let doit =
     let blockSize = 20uy
