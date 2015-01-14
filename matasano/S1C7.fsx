@@ -51,6 +51,7 @@ let decrypt (keyBytes:byte []) (iv:byte []) (bytes:byte []) =
     aes.Mode <- CipherMode.ECB
     aes.Key <- keyBytes
     aes.IV <- iv
+    aes.Padding <- PaddingMode.None
     use stream = new MemoryStream(bytes)
     use decryptor = aes.CreateDecryptor()
     use cryptoStream = new CryptoStream(stream, decryptor, CryptoStreamMode.Read)
