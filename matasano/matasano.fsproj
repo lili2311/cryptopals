@@ -60,6 +60,7 @@
     <None Include="S2C9.fsx" />
     <None Include="S2C10.fsx" />
     <None Include="S2C11.fsx" />
+    <None Include="S2C12.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharpx.Collections">
