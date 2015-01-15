@@ -1,11 +1,75 @@
-﻿
-open System
+﻿open System
+open System.IO
+open System.Security.Cryptography
 
-let pkcs7 (blockSize:byte) (bytes:byte []) : (byte []) =
-    let paddingCount = int(blockSize) - (bytes.Length % int(blockSize))
-    let paddingByte = byte(paddingCount)
-    (bytes |> Array.toList) @ (List.replicate paddingCount paddingByte) |> List.toArray
+let getByte (c:char) : (byte) =
+    match c with
+    | _ when c >= 'A' && c <= 'Z' -> byte(c) - byte('A')
+    | _ when c >= 'a' && c <= 'z' -> byte(c) - (byte('a') - 26uy)
+    | _ when c >= '0' && c <= '9' -> byte(c) - (byte('0') - 52uy)
+    | '+' -> 62uy
+    | '/' -> 63uy
+    | _ -> invalidArg "c" "c must be [0-63]"
 
+let getBytes (c0:char) (c1:char) (c2:char) (c3:char) : (byte seq) =
+    match (c0, c1, c2, c3) with
+    | (a,b,c,d) when c = '=' && d = '=' ->
+        let b0 = (getByte a <<< 2) ||| (getByte b >>> 4)
+        seq [ b0 ]
+
+    | (a,b,c,d) when d = '=' ->
+        let b0 = (getByte a <<< 2) ||| (getByte b >>> 4)
+        let b1 = (getByte b <<< 4) |||  (getByte c >>> 2)
+        seq [ b0; b1 ]
+
+    | (a,b,c,d) -> 
+        let b0 = (getByte a <<< 2) ||| (getByte b >>> 4)
+        let b1 = (getByte b <<< 4) ||| (getByte c >>> 2)
+        let b2 = (getByte c <<< 6) ||| (getByte d)
+        seq [ b0; b1; b2 ]
+
+let base64Decode (text:string) : (byte list) =
+    let rec decodeBytes chars =
+        match chars with
+        | [] -> []
+        | a::b::c::d::xs ->
+            let bytes = (getBytes a b c d) |> Seq.toList
+            bytes @ (decodeBytes xs)
+        | _ -> invalidArg "chars" "Bytes must be multiple of 4 in length"
+    let chars = text.ToCharArray() |> Array.toList
+    let bytes = decodeBytes chars
+    bytes
+
+let toChar (byte:byte) : (char) =
+    char(byte)
+let toChars (bytes:byte seq) : (char seq) =
+    bytes |> Seq.map toChar
+
+let toText (bytes:byte seq) : (string) =
+    bytes |> toChars |> String.Concat
+
+let escapeChars (chars:char seq) : (char seq) =
+    chars |> Seq.map (fun c ->
+        match c with
+        | x when x >= ' ' && x <= '~' -> x
+        | _ -> '?')
+
+let escapeText (text:string) : (string) =
+    text.ToCharArray() |> escapeChars |> String.Concat
+
+let toByte (char:char) : (byte) =
+    byte(char)
+let toBytes (chars:char seq) : (byte seq) =
+    chars |> Seq.map toByte
+
+let pkcs7 (blockSize:byte) (bytes:byte []) =
+    let extra = bytes.Length % int(blockSize)
+    if (extra = 0)
+    then bytes
+    else
+        let paddingCount = int(blockSize) - extra
+        let paddingByte = byte(paddingCount)
+        (bytes |> Array.toList) @ (List.replicate paddingCount paddingByte) |> List.toArray
 
 // http://stackoverflow.com/questions/716452/f-array-chunk-for-sequence
 let chunk n xs = seq {
@@ -21,60 +85,87 @@ let chunk n xs = seq {
     if !i <> 0 then
         yield (!arr).[0..!i-1] }
 
-let xorEncrypt (key:byte []) (bytes:byte []) : (byte []) =
-    let keyLength = key.Length
-    bytes |> Array.mapi (fun i b -> key.[i % keyLength] ^^^ b)
-
-let xorDecrypt (key:byte []) (bytes:byte []) : (byte []) =
-    let keyLength = key.Length
-    bytes |> Array.mapi (fun i b -> key.[i % keyLength] ^^^ b)
-
 let xorBytes (bs0:byte []) (bs1:byte []) : (byte []) =
     Array.zip bs0 bs1 |> Array.map (fun (b0, b1) -> b0 ^^^ b1)
 
-let ecbEncrypt (key:byte []) (bytes:byte seq) : (byte [] seq) =
-    let blockSize = key.Length
-    let blocks = chunk blockSize bytes
-    let encryptBlock (key:byte []) (plainText:byte []) : (byte []) =
-        xorEncrypt key plainText
-    let data =
-        blocks |> Seq.map (encryptBlock key)
-    data
+// http://failheap-challenge.com/showthread.php?12388-The-Matasano-crypto-challenges/page7
+let decryptAesEcb (keyBytes:byte []) (iv:byte []) (bytes:byte []) =
+    let aes = Aes.Create()
+    aes.BlockSize <- iv.Length * 8
+    aes.Mode <- CipherMode.ECB
+    aes.Key <- keyBytes
+    aes.IV <- iv
+    aes.Padding <- PaddingMode.None
 
-let ecbDecrypt (key:byte []) (bytes:byte seq) : (byte [] seq) =
-    let blockSize = key.Length
-    let blocks = chunk blockSize bytes
-    let decryptBlock (key:byte []) (plainText:byte []) : (byte []) =
-        xorDecrypt key plainText
-    let data =
-        blocks |> Seq.map (decryptBlock key)
-    data
+    let result = Array.zeroCreate<byte> (bytes.Length)
+    use stream = new MemoryStream(bytes)
+    use decryptor = aes.CreateDecryptor()
+    use cryptoStream = new CryptoStream(stream, decryptor, CryptoStreamMode.Read)
+    let bytesRead = cryptoStream.Read(result, 0, bytes.Length)
+    result
 
-let cbcEncrypt (key:byte []) (iv:byte []) (bytes:byte seq) : (byte [] seq) =
+let encryptAesEcb (keyBytes:byte []) (iv:byte []) (bytes:byte []) =
     let blockSize = iv.Length
-    let blocks = chunk blockSize bytes
-    let encryptBlock (cipherText:byte []) (plainText:byte []) : (byte []) =
-        let toEncrypt = xorBytes cipherText plainText
-        xorEncrypt key toEncrypt
-    let data =
-        blocks |> Seq.scan (encryptBlock) iv
-        // 1st block result is the IV; ignore it
-        |> Seq.skip 1
+    let paddedBytes = pkcs7 (byte(blockSize)) bytes
+    let aes = Aes.Create()
+    aes.BlockSize <- blockSize * 8
+    aes.Mode <- CipherMode.ECB
+    aes.Key <- keyBytes
+    aes.IV <- iv
+    aes.Padding <- PaddingMode.None
+
+    let data = Array.zeroCreate<byte> (paddedBytes.Length)
+    use stream = new MemoryStream(data)
+    use encryptor = aes.CreateEncryptor()
+    use cryptoStream = new CryptoStream(stream, encryptor, CryptoStreamMode.Write)
+    cryptoStream.Write(paddedBytes, 0, paddedBytes.Length)
+    cryptoStream.FlushFinalBlock()
     data
 
-let cbcDecrypt (key:byte []) (iv:byte []) (bytes:byte seq) : (byte [] seq) =
+//let plainText = "The quick brown fox jumped over the lazy dogs"
+//let key = "YELLOW SUBMARINE" |> toBytes |> Seq.toArray
+//let iv = "0000000000000000" |> toBytes |> Seq.toArray
+//let cipherText = encryptAesEcb key iv (plainText |> toBytes |> Seq.toArray)
+//let decrypted = decryptAesEcb key iv cipherText
+//let decryptedText = decrypted |> toText
+
+let decryptAesCbc (key:byte []) (iv:byte []) (bytes:byte []) : (byte []) =
     let blockSize = iv.Length
     let blocks = Seq.append [iv] (chunk blockSize bytes)
     let data =
         blocks
-        |> Seq.map (fun c -> (xorDecrypt key c, c))
+        |> Seq.map (fun block ->
+            let iv = Array.zeroCreate<byte> key.Length
+            (decryptAesEcb key iv block, block))
         |> Seq.windowed 2
         |> Seq.map (fun xs ->
             let (_, prevCipherText) = xs.[0]
             let (currentDecryptedText, _) = xs.[1]
             let plainText = xorBytes prevCipherText currentDecryptedText
             plainText)
-    data
+    data |> Seq.collect (fun x -> x) |> Seq.toArray
+
+let encryptAesCbc (key:byte []) (iv:byte []) (bytes:byte []) : (byte []) =
+    let blockSize = iv.Length
+    let paddedBytes = bytes |> pkcs7 (byte(blockSize))
+    let blocks = (chunk blockSize paddedBytes)
+    let data =
+        blocks
+        |> Seq.scan (fun prevCipherText currentPlainText ->
+            let xored = xorBytes prevCipherText currentPlainText
+            let iv = Array.zeroCreate<byte> key.Length
+            let currentCipherText = encryptAesEcb key iv xored
+            currentCipherText) iv
+            // ignore 1st block as is IV block
+        |> Seq.skip 1
+    data |> Seq.collect (fun x -> x) |> Seq.toArray
+
+let plainText = "The quick brown fox jumped over the lazy dogs"
+let key = "YELLOW SUBMARINE" |> toBytes |> Seq.toArray
+let iv = "0000000000000000" |> toBytes |> Seq.toArray
+let cipherText = encryptAesCbc key iv (plainText |> toBytes |> Seq.toArray)
+let decrypted = decryptAesCbc key iv cipherText
+let decryptedText = decrypted |> toText
 
 let randomBytes (r:Random) (n:int) =
     let bytes = Array.zeroCreate n
@@ -88,55 +179,34 @@ let encryptRandom (r:Random) (bytes: byte []) : (byte []) =
     let key = randomAesKey r
     let prefix = randomBytes r (r.Next (5, 10))
     let postfix = randomBytes r (r.Next (5, 10))
-    let bs = [prefix;bytes;postfix] |> Array.concat |> (pkcs7 16uy)
+    let bs = [prefix;bytes;postfix] |> Array.concat
     let encryptedBytes =
         match (r.NextDouble () > 0.5) with
-        | true -> ecbEncrypt key bs
+        | true ->
+            let iv = Array.zeroCreate<byte> 16
+            encryptAesEcb key iv bs
         | false ->
-            let iv = randomBytes r 16
-            cbcEncrypt key iv bs
-    encryptedBytes |> Seq.toArray |> Array.collect (fun x -> x)
+            let iv = randomAesKey r
+            encryptAesCbc key iv bs
+    encryptedBytes
 
 type EncryptionType =
     | ECB
     | CBC
 
-let toChars (bytes:byte seq) : (char seq) =
-    let toChar (byte:byte) : (char) =
-        char(byte)
-    bytes |> Seq.map toChar
-
-let toText (bytes:byte seq) : (string) =
-    bytes |> toChars |> String.Concat
-
-let escapeChars (chars:char seq) : (char seq) =
-    chars |> Seq.map (fun c ->
-        match c with
-        | x when x >= ' ' && x <= '~' -> x
-        | _ -> '?')
-
-let escapeText (text:string) : (string) =
-    text.ToCharArray() |> escapeChars |> String.Concat
-
-let toBytes (chars:char seq) : (byte seq) =
-    let toByte (char:char) : (byte) =
-        byte(char)
-    chars |> Seq.map toByte
-
-let detectEcbOrCbc (plainText:byte seq) (bytes:byte seq) : (EncryptionType) =
+let detectEcbOrCbc (bytes:byte []) : (EncryptionType) =
+    let blocks = chunk 16 bytes
+    let setBlocks = blocks |> Set.ofSeq
+    let setLength = setBlocks |> Set.count
+    let blocksLength = blocks |> Seq.length
+    match setLength = blocksLength with
+    | true -> CBC
+    | false -> ECB
     
 let r = new Random(271)
 
-//
-//let doit (r:Random) =
-//    let plainText = randomBytes r 1024
-//    let encrypted = encryptRandom r plainText
-//    detectEcbOrCbc encrypted
 
-let key = "ghfncju8b#f1*-['"
-let keyBytes = key |> toBytes |> Seq.toArray
-let plainText = "The quick brown fox jumped over the lazy dogs"
-let foo =
-    |> toBytes
-    |> Seq.toArray
-    |> (xorEncrypt keyBytes)
+let doit (r:Random) =
+    let plainText = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" |> toBytes |> Seq.toArray
+    let encrypted = encryptRandom r plainText
+    detectEcbOrCbc encrypted
