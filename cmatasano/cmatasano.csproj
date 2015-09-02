@@ -53,6 +53,8 @@
     <Compile Include="Challenge1Tests.cs" />
     <Compile Include="Challenge2.cs" />
     <Compile Include="Challenge2Tests.cs" />
+    <Compile Include="Challenge3.cs" />
+    <Compile Include="Challenge3Tests.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Util.cs" />
