@@ -50,6 +50,7 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="Library1.fs" />
+    <None Include="S2C14.fsx" />
     <None Include="Script.fsx" />
     <Content Include="packages.config" />
     <Content Include="app.config" />
@@ -60,8 +61,8 @@
     <None Include="S2C9.fsx" />
     <None Include="S2C10.fsx" />
     <None Include="S2C11.fsx" />
-    <None Include="S2C12.fsx" />
     <None Include="S2C13.fsx" />
+    <None Include="S2C12.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharpx.Collections">
